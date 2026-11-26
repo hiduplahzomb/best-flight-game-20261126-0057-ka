@@ -14,8 +14,9 @@ function panel(ctx, x, y, w, h, fill = 'rgba(8,12,20,0.72)') {
 }
 const fmt = (n) => n.toLocaleString('en-US');
 
-export function drawHud(ctx, W, H, g) {
+export function drawHud(ctx, W, H, g, opts = {}) {
   const p = g.plane, s = g.sortie, w = g.world;
+  const cockpit = g.view === 'cockpit';
   const nextGate = w.gates.findIndex(gg => !gg.hit);
   const gateLabel = nextGate < 0 ? `${w.gates.length}/${w.gates.length}` : `${String(nextGate + 1).padStart(2, '0')}/${String(w.gates.length).padStart(2, '0')}`;
   const stall = 56 + (p.flap === 0 ? 12 : p.flap === 15 ? 6 : 0) + p.rime * 0.14;
@@ -38,6 +39,9 @@ export function drawHud(ctx, W, H, g) {
       ctx.fillStyle = '#ffb62e'; ctx.fillRect(bx + 14, 46, (bw - 28) * clamp(banner.progress, 0, 1), 5);
     }
   }
+  // Debrief: banner only — every flight HUD panel stays hidden so the
+  // debrief panel never covers a live ALT tape or binnacle behind it.
+  if (opts.bannerOnly) return;
   // --- compass top-left ---
   panel(ctx, 12, 54, 300, 74);
   text(ctx, `HDG ${String(Math.round(p.hdg)).padStart(3, '0')}°`, 22, 60, 20, '#7fe3ff');
@@ -48,7 +52,9 @@ export function drawHud(ctx, W, H, g) {
   ctx.fillStyle = '#0a1420'; ctx.fillRect(22, 122, 280, 4);
   ctx.fillStyle = '#ffb62e'; ctx.fillRect(22 + ((p.hdg % 360) / 360) * 280 - 2, 118, 4, 12);
 
-  // --- airspeed tape left ---
+  // --- airspeed tape left (hidden in cockpit: the dashboard dial
+  // reads the same IAS / wind / flaps, so the tape is redundant) ---
+  if (!cockpit) {
   panel(ctx, 12, 150, 150, 150);
   text(ctx, 'IAS', 22, 156, 12, '#8fb8d8', 'left', false);
   text(ctx, `${String(Math.round(p.ias)).padStart(3, '0')} KT`, 22, 174, 22, p.stallWarn ? '#ff5a4a' : '#7fe3ff');
@@ -56,8 +62,11 @@ export function drawHud(ctx, W, H, g) {
   text(ctx, `GS ${String(Math.round(Math.max(0, p.ias - 20))).padStart(3, '0')} KT`, 22, 224, 13, '#fff', 'left', false);
   text(ctx, wind, 22, 246, 12, '#ffd98a', 'left', false);
   text(ctx, `FLAPS ${p.flap}° · GEAR ${p.gearDown ? 'DN' : 'UP'}`, 22, 266, 12, '#fff', 'left', false);
+  }
 
-  // --- altitude tape right ---
+  // --- altitude tape right (hidden in cockpit: dashboard altimeter
+  // reads the same ALT / RAD / VSI / fuel) ---
+  if (!cockpit) {
   panel(ctx, W - 162, 150, 150, 150);
   text(ctx, 'ALT', W - 152, 156, 12, '#8fb8d8', 'left', false);
   text(ctx, `${String(Math.round(p.alt)).padStart(3, '0')} FT`, W - 152, 174, 22, '#7fe3ff');
@@ -65,6 +74,7 @@ export function drawHud(ctx, W, H, g) {
   text(ctx, `VSI ${p.vs >= 0 ? '+' : ''}${Math.round(p.vs)} FPM`, W - 152, 224, 13, p.vs < -600 ? '#ff5a4a' : '#fff', 'left', false);
   text(ctx, 'TERR CLEAR', W - 152, 246, 12, '#39ff88', 'left', false);
   text(ctx, `FUEL ${p.fuel.toFixed(1)} GAL`, W - 152, 266, 12, p.fuel < 8 ? '#ff5a4a' : '#fff', 'left', false);
+  }
 
   // --- score card top-right ---
   panel(ctx, W - 312, 54, 300, 88);
@@ -73,13 +83,20 @@ export function drawHud(ctx, W, H, g) {
   text(ctx, `OAT ${s.oat}°C · QNH ${s.qnh} hPa · VIS ${s.visNm} NM`, W - 302, 104, 12, '#fff', 'left', false);
   text(ctx, `RIME ${Math.round(p.rime)}% · DE-ICE ${p.deice ? 'ON' : 'OFF'}`, W - 302, 122, 12, p.rime > 25 ? '#ff9a8a' : '#39ff88', 'left', false);
 
-  // --- radio strip bottom-left ---
-  panel(ctx, 12, H - 118, 430, 56);
-  text(ctx, 'CAPT. MAREN LIND · FULMAR-4', 22, H - 112, 12, '#8fb8d8');
+  // --- radio strip bottom-left — in cockpit view it sits ABOVE the
+  // glareshield with a taller box (68 px) so all three wrapped lines
+  // fit inside; in chase view it stays at the bottom as before ---
+  const radioY = cockpit ? Math.round(H * 0.66) - 76 : H - 118;
+  const radioH = cockpit ? 68 : 56;
+  const radioW = cockpit ? 470 : 430;
+  panel(ctx, 12, radioY, radioW, radioH);
+  text(ctx, 'CAPT. MAREN LIND · FULMAR-4', 22, radioY + 6, 12, '#8fb8d8');
   const msg = g.radioMsg || '';
   ctx.font = "400 12px 'Courier New', monospace"; ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-  wrapText(ctx, msg, 22, H - 94, 410, 15);
-  // --- bottom binnacle ---
+  wrapText(ctx, msg, 22, radioY + 24, radioW - 20, 14);
+  // --- bottom binnacle (chase view only: in cockpit the dashboard
+  // already shows the attitude ball, ENG L/R and FUEL) ---
+  if (cockpit) return;
   const bw = 340, bx = (W - bw) / 2, by = H - 96;
   panel(ctx, bx, by, bw, 84);
   // attitude ball

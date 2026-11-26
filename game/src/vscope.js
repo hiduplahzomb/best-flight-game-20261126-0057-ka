@@ -17,18 +17,26 @@ export function sampleProfile(world, plane, n = 48) {
   return pts;
 }
 
-export function landingArc(plane, world, steps = 40) {
-  // integrate vertical speed forward: parabola from current state
+export function landingArc(plane, world, steps = 48) {
+  // True parabola, fitted so it touches the runway threshold: solve for
+  // the constant vertical acceleration that takes the aircraft from its
+  // current altitude / vertical speed to the runway elevation exactly
+  // at the threshold distance, then sample that parabola. The result
+  // visibly curves downward instead of drawing a straight diagonal.
   const pts = [];
-  let alt = plane.alt, vs = plane.vs, d = 0;
-  const gs = Math.max(20, plane.ias) * 0.514444;
-  for (let i = 0; i < steps; i++) {
-    const dt = 0.5;
-    d += gs * dt;
-    vs += (-9.8 * 0.12 + (plane.flap > 0 ? -2.2 : 0)) * dt * 3.28; // sink grows gently
-    alt += (vs / 60) * dt;
-    pts.push({ d, alt: Math.max(0, alt) });
-    if (alt <= 0) break;
+  const gs = Math.max(20, plane.ias) * 0.514444; // m/s ground speed
+  const rd = Math.hypot(world.runway.x - plane.x, world.runway.z0 - plane.z);
+  const elev = world.runway.elevFt;
+  const tTd = Math.max(4, rd / gs); // seconds to the threshold
+  const vs0 = plane.vs / 60; // ft/s (negative = sinking)
+  const a = (2 * (elev - plane.alt - vs0 * tTd)) / (tTd * tTd); // ft/s^2
+  for (let i = 0; i <= steps; i++) {
+    const f = i / steps;
+    const t = f * tTd;
+    const d = gs * t;
+    const alt = plane.alt + vs0 * t + 0.5 * a * t * t;
+    pts.push({ d, alt: Math.max(elev - 5, alt) });
+    if (f >= 1) break;
   }
   return pts;
 }
@@ -47,15 +55,56 @@ export function drawVScope(ctx, x, y, w, h, g) {
   ctx.save();
   ctx.beginPath(); ctx.rect(plotX, plotY, plotW, plotH); ctx.clip();
   if (g.debrief && p.trail.length > 2) {
-    // black-box trace: actual flown path
+    // Black-Box Flight-Recorder: the actual flown approach, with the
+    // ideal glideslope, wind-shear spike, gate markers and a TDZ callout
     const t0 = p.trail[0].z, t1 = p.trail[p.trail.length - 1].z;
     const span = Math.max(1, t1 - t0);
-    ctx.strokeStyle = '#5affa0'; ctx.lineWidth = 2; ctx.beginPath();
+    const alt0 = p.trail[0].alt, altEnd = p.trail[p.trail.length - 1].alt;
+    const xy = (smp) => [plotX + ((smp.z - t0) / span) * plotW, plotY + plotH - (smp.alt / maxAlt) * plotH];
+    // terrain baseline + runway elevation line
+    ctx.strokeStyle = 'rgba(120,90,60,0.9)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(plotX, plotY + plotH - (altEnd / maxAlt) * plotH); ctx.lineTo(plotX + plotW, plotY + plotH - (altEnd / maxAlt) * plotH); ctx.stroke();
+    ctx.fillStyle = '#8fb8d8'; ctx.font = "700 8px 'Courier New', monospace";
+    ctx.fillText('RWY 180 FT', plotX + 4, plotY + plotH - (altEnd / maxAlt) * plotH - 4);
+    // ideal glideslope (dashed amber): straight line from entry to TDZ
+    ctx.strokeStyle = '#ffb62e'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.moveTo(...xy(p.trail[0])); ctx.lineTo(...xy(p.trail[p.trail.length - 1])); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#ffb62e'; ctx.fillText('IDEAL', plotX + plotW * 0.42, plotY + plotH - ((alt0 + altEnd) / 2 / maxAlt) * plotH - 6);
+    // wind-shear spike at the arch (55% along the trace)
+    const si = Math.floor(p.trail.length * 0.55);
+    const [sxS, syS] = xy(p.trail[si]);
+    ctx.strokeStyle = '#ff5a4a'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(sxS, syS); ctx.lineTo(sxS, syS - 26); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(sxS - 4, syS - 20); ctx.lineTo(sxS, syS - 26); ctx.lineTo(sxS + 4, syS - 20); ctx.stroke();
+    ctx.fillStyle = '#ff5a4a'; ctx.fillText('SHEAR', sxS - 14, syS - 30);
+    // gate markers G1..G8 along the trace
+    ctx.fillStyle = '#ffb62e';
+    for (let gi = 0; gi < 8; gi++) {
+      const idx = Math.floor((gi + 0.5) / 8 * (p.trail.length - 1));
+      const [gx, gy] = xy(p.trail[idx]);
+      ctx.beginPath(); ctx.arc(gx, gy - 2, 2.5, 0, Math.PI * 2); ctx.fill();
+      if (gi % 2 === 0) { ctx.font = "700 8px 'Courier New', monospace"; ctx.fillText('G' + (gi + 1), gx - 5, gy - 10); }
+    }
+    // actual altitude curve (thick green, above the ideal near the end)
+    ctx.strokeStyle = '#5affa0'; ctx.lineWidth = 2.5; ctx.beginPath();
     p.trail.forEach((smp, i) => {
-      const [sx, sy] = [plotX + ((smp.z - t0) / span) * plotW, plotY + plotH - (smp.alt / maxAlt) * plotH];
+      const [sx, sy] = xy(smp);
       i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
     });
     ctx.stroke();
+    ctx.fillStyle = '#5affa0'; ctx.font = "700 8px 'Courier New', monospace";
+    ctx.fillText('ACTUAL', plotX + 6, plotY + 12);
+    // TDZ callout at the touchdown end, offset up-left so it never
+    // collides with the panel edge or the buttons below
+    const [ex, ey] = xy(p.trail[p.trail.length - 1]);
+    ctx.fillStyle = '#39ff88'; ctx.beginPath(); ctx.arc(ex - 2, ey, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(6,20,12,0.9)';
+    ctx.beginPath(); ctx.roundRect(ex - 74, ey - 30, 68, 16, 3); ctx.fill();
+    ctx.strokeStyle = '#39ff88'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = '#5affa0'; ctx.font = "700 9px 'Courier New', monospace";
+    ctx.fillText('TDZ +14M', ex - 70, ey - 19);
   } else {
     const prof = sampleProfile(world, p);
     // terrain profile
@@ -105,6 +154,14 @@ export function drawVScope(ctx, x, y, w, h, g) {
     ctx.strokeStyle = safe ? '#39ff88' : '#ffb62e'; ctx.lineWidth = 2.5; ctx.beginPath();
     arc.forEach((pt, i) => { const [sx, sy] = toXY(pt.d, pt.alt); i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy); });
     ctx.stroke();
+    // TDZ dot + label where the parabola meets the threshold
+    if (last) {
+      const [lx, ly] = toXY(last.d, last.alt);
+      ctx.fillStyle = safe ? '#39ff88' : '#ffb62e';
+      ctx.beginPath(); ctx.arc(lx, ly, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.font = "700 8px 'Courier New', monospace";
+      ctx.fillText('TDZ', Math.min(lx + 5, plotX + plotW - 24), Math.max(ly - 10, plotY + 8));
+    }
   }
   ctx.restore();
   ctx.restore();

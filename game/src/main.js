@@ -109,14 +109,14 @@ function landSuccess(res) {
   const g = gradeFrom(p.score, res.sinkFpm, p.gatesHit, game.world.gates.length);
   const mm = Math.floor(p.timerS / 60), ss = String(Math.floor(p.timerS % 60)).padStart(2, '0');
   game.banner = { text: `TOUCHDOWN CONFIRMED — ${game.sortie.rwy.toUpperCase()} · ${game.sortie.payload.split('·')[0].trim()} SAFE · ${String(mm).padStart(2, '0')}:${ss} TO SPARE`, color: '#0a7a3a', progress: 1 };
-  game.debrief = { grade: g.grade, title: g.title, sinkFpm: Math.round(res.sinkFpm), thresholdM: Math.round(res.thresholdM), gates: `${p.gatesHit}/${game.world.gates.length}`, stormMargin: `${String(mm).padStart(2, '0')}:${ss}`, hull: 94, evac: game.sortie.payload, sortieScore: Math.round(p.score), campaign: Math.round(p.score) + 30760 };
+  game.debrief = { grade: g.grade, title: g.title, sinkFpm: Math.round(res.sinkFpm), thresholdM: Math.round(res.thresholdM), gates: `${String(p.gatesHit).padStart(2, '0')}/${String(game.world.gates.length).padStart(2, '0')}`, stormMargin: `${String(mm).padStart(2, '0')}:${ss}`, hull: 94, evac: game.sortie.payload, sortieScore: Math.round(p.score), campaign: Math.round(p.score) + 30760 };
   game.screen = 'debrief';
 }
 
 function crash(reason) {
   const p = game.plane;
   p.crashed = true; p.crashReason = reason;
-  game.debrief = { grade: '—', title: 'BLACK-BOX INVESTIGATION', sinkFpm: Math.round(p.vs), thresholdM: 0, gates: `${p.gatesHit}/${game.world.gates.length}`, stormMargin: '—', hull: 31, evac: game.sortie.payload, sortieScore: Math.round(p.score), campaign: Math.round(p.score) + 30760, crash: reason };
+  game.debrief = { grade: '—', title: 'BLACK-BOX INVESTIGATION', sinkFpm: Math.round(p.vs), thresholdM: 0, gates: `${String(p.gatesHit).padStart(2, '0')}/${String(game.world.gates.length).padStart(2, '0')}`, stormMargin: '—', hull: 31, evac: game.sortie.payload, sortieScore: Math.round(p.score), campaign: Math.round(p.score) + 30760, crash: reason };
   game.screen = 'debrief';
 }
 
@@ -127,32 +127,55 @@ function drawTitle() {
   ctx.beginPath(); ctx.roundRect(bx, 10, bw, 34, 5); ctx.fill();
   ctx.font = "700 15px 'Courier New', monospace"; ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   ctx.fillText(game.banner ? game.banner.text : '', W / 2, 17); ctx.textAlign = 'left';
-  // briefing panel left third
+  // briefing panel left — widened to 500 px so the pilot plate and
+  // the longest roster line fit inside with >=16 px inner margin
   ctx.fillStyle = 'rgba(8,14,26,0.82)';
-  ctx.beginPath(); ctx.roundRect(28, 90, 430, 540, 10); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(28, 84, 500, 566, 10); ctx.fill();
   ctx.strokeStyle = 'rgba(255,182,46,0.6)'; ctx.lineWidth = 2; ctx.stroke();
-  ctx.font = "700 34px 'Courier New', monospace"; ctx.fillStyle = '#ffb62e'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-  ctx.fillText('SKARV SOUND:', 52, 112);
-  ctx.fillStyle = '#fff'; ctx.fillText('FLARE-LINE AIRLIFT', 52, 150);
-  ctx.font = "400 14px 'Courier New', monospace"; ctx.fillStyle = '#9fd8ff';
-  ctx.fillText(`${PILOT} · ${AIRCRAFT} · TWIN-PROP STOL`, 52, 196);
+  ctx.font = "700 32px 'Courier New', monospace"; ctx.fillStyle = '#ffb62e'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.fillText('SKARV SOUND:', 52, 106);
+  ctx.fillStyle = '#fff'; ctx.fillText('FLARE-LINE AIRLIFT', 52, 142);
+  ctx.font = "400 13px 'Courier New', monospace"; ctx.fillStyle = '#9fd8ff';
+  ctx.fillText(`${PILOT} · ${AIRCRAFT} · TWIN-PROP STOL`, 52, 188);
   ctx.fillStyle = '#fff'; ctx.font = "700 15px 'Courier New', monospace";
-  ctx.fillText('SORTIE ROSTER — 5 EVAC FLIGHTS', 52, 232);
+  ctx.fillText('SORTIE ROSTER — 5 EVAC FLIGHTS', 52, 222);
   SORTIES.forEach((s, i) => {
-    const y = 262 + i * 40;
+    const y = 250 + i * 34;
     ctx.fillStyle = i === 0 ? '#ffb62e' : '#cfe6ff';
-    ctx.font = `${i === 0 ? '700' : '400'} 14px 'Courier New', monospace`;
+    ctx.font = `${i === 0 ? '700' : '400'} 13px 'Courier New', monospace`;
     ctx.fillText(`${i === 0 ? '▶ ' : '  '}0${s.id} ${s.name.toUpperCase()} — ${s.stripM} M · ${s.windKt} KT · ${s.gates} GATES`, 52, y);
   });
   ctx.fillStyle = '#39ff88';
-  ctx.beginPath(); ctx.roundRect(52, 480, 260, 44, 6); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(52, 436, 260, 44, 6); ctx.fill();
   ctx.fillStyle = '#06210f'; ctx.font = "700 18px 'Courier New', monospace"; ctx.textAlign = 'center';
-  ctx.fillText('LAUNCH SORTIE', 182, 492);
+  ctx.fillText('LAUNCH SORTIE', 182, 448);
   ctx.textAlign = 'left';
-  ctx.fillStyle = '#9fb8cc'; ctx.font = "400 12px 'Courier New', monospace";
-  ctx.fillText(CONTROLS_TEXT.slice(0, 62), 52, 548);
-  ctx.fillText(CONTROLS_TEXT.slice(62), 52, 566);
-  ctx.fillText('ENTER to launch · 1-5 to pick a sortie', 52, 592);
+  // controls legend: tight two-column keycap grid, 16 px inner margin
+  const keyRows = [
+    [['ARROWS / WASD', 'pitch + roll'], ['Q / E', 'rudder']],
+    [['SHIFT / CTRL', 'throttle'], ['F', 'flaps']],
+    [['G', 'gear'], ['I', 'de-ice']],
+    [['B', 'brake / reverse'], ['C', 'camera']],
+    [['P', 'pause'], ['X', 'refly']],
+    [['M', 'mute'], ['ENTER', 'launch']],
+  ];
+  ctx.font = "400 11px 'Courier New', monospace";
+  keyRows.forEach((row, ri) => {
+    const y = 500 + ri * 22;
+    row.forEach((cell, ci) => {
+      const x = 52 + ci * 228;
+      const kw = ctx.measureText(cell[0]).width + 14;
+      ctx.fillStyle = 'rgba(127,227,255,0.14)';
+      ctx.beginPath(); ctx.roundRect(x, y, kw, 17, 3); ctx.fill();
+      ctx.strokeStyle = 'rgba(127,227,255,0.45)'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = '#7fe3ff'; ctx.font = "700 10px 'Courier New', monospace"; ctx.textAlign = 'center';
+      ctx.fillText(cell[0], x + kw / 2, y + 4);
+      ctx.fillStyle = '#9fb8cc'; ctx.font = "400 11px 'Courier New', monospace"; ctx.textAlign = 'left';
+      ctx.fillText(cell[1], x + kw + 6, y + 3);
+    });
+  });
+  ctx.fillStyle = '#9fb8cc'; ctx.font = "400 11px 'Courier New', monospace";
+  ctx.fillText('ENTER to launch · 1-5 to pick a sortie', 52, 634);
   // telemetry strip bottom-right
   ctx.fillStyle = 'rgba(8,14,26,0.75)';
   ctx.beginPath(); ctx.roundRect(W - 448, H - 108, 420, 80, 6); ctx.fill();
@@ -165,8 +188,11 @@ function drawTitle() {
 
 function drawDebrief() {
   const d = game.debrief, p = game.plane;
+  const fmt = (n) => Number(n).toLocaleString('en-US');
   ctx.fillStyle = 'rgba(4,8,16,0.45)'; ctx.fillRect(0, 0, W, H);
-  const px = W - 470, py = 150, pw = 442, ph = 450;
+  // taller panel with real padding: rows end well above the Black-Box,
+  // and the Black-Box ends well above the buttons — nothing overlaps
+  const px = W - 470, py = 138, pw = 442, ph = 472;
   ctx.fillStyle = 'rgba(6,12,20,0.88)';
   ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 10); ctx.fill();
   ctx.strokeStyle = d.crash ? '#ff5a4a' : '#39ff88'; ctx.lineWidth = 2; ctx.stroke();
@@ -174,15 +200,19 @@ function drawDebrief() {
   ctx.fillText(d.crash ? 'BLACK-BOX INVESTIGATION' : `GRADE ${d.grade} · ${d.title}`, px + 20, py + 16);
   ctx.font = "400 14px 'Courier New', monospace"; ctx.fillStyle = '#fff';
   const rows = d.crash ? [
-    ['CAUSE', d.crash], ['GATES', d.gates], ['HULL', d.hull + '%'], ['SORTIE SCORE', String(d.sortieScore)],
+    ['CAUSE', d.crash], ['GATES', d.gates], ['HULL', d.hull + '%'], ['SORTIE SCORE', fmt(d.sortieScore)],
   ] : [
-    ['SINK RATE', `${d.sinkFpm} FPM  +2,000`], ['THRESHOLD', `+${d.thresholdM} M  +1,500`],
+    ['SINK RATE', `${fmt(d.sinkFpm)} FPM  +2,000`], ['THRESHOLD', `+${d.thresholdM} M  +1,500`],
     ['GATES', `${d.gates}  +2,400`], ['STORM MARGIN', `${d.stormMargin}  +1,900`],
-    ['HULL', `${d.hull}% · ${d.evac}`], ['SORTIE SCORE', String(d.sortieScore)],
-    ['CAMPAIGN', String(d.campaign)],
+    ['HULL', `${d.hull}% · ${d.evac}`], ['SORTIE SCORE', fmt(d.sortieScore)],
+    ['CAMPAIGN', fmt(d.campaign)],
   ];
-  rows.forEach((r, i) => { ctx.fillText(r[0], px + 20, py + 56 + i * 28); ctx.fillText(r[1], px + 190, py + 56 + i * 28); });
-  drawVScope(ctx, px + 20, py + 56 + rows.length * 28 + 10, pw - 40, 150, game);
+  rows.forEach((r, i) => { ctx.fillText(r[0], px + 20, py + 52 + i * 24); ctx.fillText(r[1], px + 190, py + 52 + i * 24); });
+  // Black-Box: starts after the rows with a gap, ends 28 px above the
+  // first button so the trace and its labels are never clipped
+  const bbY = py + 52 + rows.length * 24 + 12;
+  const bbH = (py + ph - 96 - 14) - bbY;
+  drawVScope(ctx, px + 20, bbY, pw - 40, bbH, game);
   ctx.fillStyle = '#39ff88';
   ctx.beginPath(); ctx.roundRect(px + 20, py + ph - 96, pw - 40, 34, 5); ctx.fill();
   ctx.fillStyle = '#06210f'; ctx.font = "700 15px 'Courier New', monospace"; ctx.textAlign = 'center';
@@ -214,9 +244,13 @@ function render() {
   renderScene(ctx, W, H, game.world, game.plane, game.view, game.t, game.view);
   if (game.view === 'cockpit') drawCockpitDashboard(ctx, W, H, game.plane, game.t);
   if (game.view === 'cockpit') drawCockpitFrame(ctx, W, H, game.plane, game.t);
-  if (game.screen === 'play' || game.screen === 'debrief') {
+  if (game.screen === 'play') {
     drawHud(ctx, W, H, game);
-    if (game.screen === 'play') drawVScope(ctx, W - 322, H - 218, 310, 150, game);
+    drawVScope(ctx, W - 322, H - 218, 310, 150, game);
+  } else if (game.screen === 'debrief') {
+    // banner only: all flight HUD panels (compass, tapes, score card,
+    // radio, binnacle, V-SCOPE) stay hidden behind the debrief panel
+    drawHud(ctx, W, H, game, { bannerOnly: true });
   }
   if (game.screen === 'title') drawTitle();
   if (game.screen === 'debrief') drawDebrief();
